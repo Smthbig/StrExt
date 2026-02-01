@@ -1,2 +1,2 @@
 # StrExt
-A bash structure extractor or genrator to give file directory
+A bash structure extractor or genrator of given file directory
