@@ -1,110 +1,90 @@
-#!/usr/bin/env bash
-# ==========================================
-# Folder Structure Generator (Production)
+#!/bin/bash
+
+# =========================================
+# Interactive Folder Structure Generator
 # Output: TXT
-# ==========================================
+# =========================================
 
-set -Eeuo pipefail
-IFS=$'\n\t'
-
-# ---------- Defaults ----------
 IGNORE_GIT=true
-MAX_DEPTH=""
-OUTPUT_FILE="tree_output.txt"
 
-# ---------- Utils ----------
-die() {
-  echo "Error: $*" >&2
-  exit 1
-}
+echo "========================================="
+echo " Folder Structure Generator (Bash)"
+echo "========================================="
 
-prompt_dir() {
-  while true; do
-    read -rp "Enter folder path: " ROOT_DIR
-    [[ -d "$ROOT_DIR" ]] && break
-    echo "Directory does not exist. Try again."
-  done
-}
+# Ask for folder path
+while true; do
+  read -rp "Enter folder path: " ROOT_DIR
+  if [ -d "$ROOT_DIR" ]; then
+    break
+  fi
+  echo "❌ Directory not found. Try again."
+done
 
-prompt_depth() {
-  read -rp "Max depth (Enter = unlimited): " MAX_DEPTH
-  [[ -z "$MAX_DEPTH" ]] && return
-  [[ "$MAX_DEPTH" =~ ^[0-9]+$ ]] || {
-    echo "Invalid depth. Using unlimited."
-    MAX_DEPTH=""
-  }
-}
+# Ask for max depth
+read -rp "Max depth? (press Enter for unlimited): " MAX_DEPTH
+if [[ -z "$MAX_DEPTH" ]]; then
+  MAX_DEPTH=""
+elif ! [[ "$MAX_DEPTH" =~ ^[0-9]+$ ]]; then
+  echo "Invalid depth. Using unlimited."
+  MAX_DEPTH=""
+fi
 
-prompt_ignore_git() {
-  read -rp "Ignore .git folder? (y/n): " ans
-  [[ "$ans" =~ ^[Nn] ]] && IGNORE_GIT=false
-}
+# Ask ignore .git
+read -rp "Ignore .git folder? (y/n): " IGNORE_GIT_INPUT
+if [[ "$IGNORE_GIT_INPUT" =~ ^[Nn] ]]; then
+  IGNORE_GIT=false
+fi
 
-prompt_output() {
-  read -rp "Output file (default: tree_output.txt): " out
-  [[ -n "$out" ]] && OUTPUT_FILE="$out"
-}
+# Ask output file
+read -rp "Output file name (default: tree_output.txt): " OUTPUT_FILE
+OUTPUT_FILE="${OUTPUT_FILE:-tree_output.txt}"
 
-# ---------- Core Logic ----------
+# Clear output
+> "$OUTPUT_FILE"
+
 print_tree() {
-  local dir="$1"
-  local prefix="$2"
-  local depth="$3"
+  local DIR="$1"
+  local PREFIX="$2"
+  local DEPTH="$3"
 
-  [[ -n "$MAX_DEPTH" && "$depth" -ge "$MAX_DEPTH" ]] && return
+  if [ -n "$MAX_DEPTH" ] && [ "$DEPTH" -ge "$MAX_DEPTH" ]; then
+    return
+  fi
 
-  local entries=()
-  while IFS= read -r -d '' entry; do
-    entries+=("$entry")
-  done < <(find "$dir" -mindepth 1 -maxdepth 1 -print0 | sort -z)
+  mapfile -t ITEMS < <(ls -A "$DIR" 2>/dev/null)
+  local COUNT=${#ITEMS[@]}
+  local INDEX=0
 
-  local total="${#entries[@]}"
-  local index=0
+  for ITEM in "${ITEMS[@]}"; do
+    INDEX=$((INDEX + 1))
 
-  for entry in "${entries[@]}"; do
-    local name
-    name="$(basename "$entry")"
-
-    $IGNORE_GIT && [[ "$name" == ".git" ]] && continue
-
-    index=$((index + 1))
-    local connector new_prefix
-
-    if [[ "$index" -eq "$total" ]]; then
-      connector="└── "
-      new_prefix="${prefix}    "
-    else
-      connector="├── "
-      new_prefix="${prefix}│   "
+    if $IGNORE_GIT && [ "$ITEM" = ".git" ]; then
+      continue
     fi
 
-    echo "${prefix}${connector}${name}" >> "$OUTPUT_FILE"
+    local FULL_PATH="$DIR/$ITEM"
 
-    [[ -d "$entry" ]] && print_tree "$entry" "$new_prefix" $((depth + 1))
+    if [ "$INDEX" -eq "$COUNT" ]; then
+      CONNECTOR="└── "
+      NEW_PREFIX="$PREFIX    "
+    else
+      CONNECTOR="├── "
+      NEW_PREFIX="$PREFIX│   "
+    fi
+
+    echo "${PREFIX}${CONNECTOR}${ITEM}" >> "$OUTPUT_FILE"
+
+    if [ -d "$FULL_PATH" ]; then
+      print_tree "$FULL_PATH" "$NEW_PREFIX" $((DEPTH + 1))
+    fi
   done
 }
 
-# ---------- Main ----------
-main() {
-  echo "========================================="
-  echo " Folder Structure Generator"
-  echo "========================================="
+# Print root
+ROOT_NAME=$(basename "$(realpath "$ROOT_DIR")")
+echo "$ROOT_NAME/" >> "$OUTPUT_FILE"
+print_tree "$ROOT_DIR" "" 0
 
-  prompt_dir
-  prompt_depth
-  prompt_ignore_git
-  prompt_output
-
-  : > "$OUTPUT_FILE"
-
-  local root
-  root="$(basename "$(cd "$ROOT_DIR" && pwd)")"
-
-  echo "${root}/" >> "$OUTPUT_FILE"
-  print_tree "$ROOT_DIR" "" 0
-
-  echo "========================================="
-  echo "Output written to: $OUTPUT_FILE"
-}
-
-main "$@"
+echo "========================================="
+echo "✅ Folder structure generated!"
+echo "📄 Saved to: $OUTPUT_FILE"
